@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LeadFlow Admin</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #2a3038;
+    --gold: #d4af37;
+    --indigo: #4b3f72;
+    --text: #e6e6e6;
+    --muted: #8b949e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    margin: 0;
+    padding: 2rem;
+  }
+  h1 { color: var(--gold); font-weight: 600; margin-bottom: 0.25rem; }
+  p.sub { color: var(--muted); margin-top: 0; }
+  .config {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  input {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    flex: 1;
+    min-width: 220px;
+  }
+  button {
+    background: var(--indigo);
+    color: white;
+    border: none;
+    padding: 0.55rem 1.1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .tabs button { background: var(--panel); border: 1px solid var(--border); }
+  .tabs button.active { background: var(--indigo); }
+  #status { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; min-width: 700px; }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  th { color: var(--gold); font-weight: 600; white-space: nowrap; }
+  tr:hover { background: #1b2129; }
+  .badge {
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge.trial { background: #4b3f72; }
+  .badge.active { background: #1a7f37; }
+  .badge.pending_connect { background: #9e6a03; }
+  .badge.new { background: #4b3f72; }
+  .badge.contacted { background: #1a7f37; }
+  .badge.quoted { background: #9e6a03; }
+  .badge.booked { background: #0580ca; }
+  .badge.won { background: #1a7f37; }
+  .badge.lost { background: #cf222e; }
+  .empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-top: 1rem;
+  }
+  .empty strong { color: var(--gold); }
+  .detail {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .detail h2 { color: var(--gold); margin-top: 0; font-size: 1.1rem; }
+  .thread { max-height: 400px; overflow-y: auto; margin: 1rem 0; }
+  .msg {
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    max-width: 80%;
+    word-wrap: break-word;
+  }
+  .msg.in { background: #1b2129; margin-right: auto; }
+  .msg.out { background: var(--indigo); margin-left: auto; }
+  .msg-meta { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.2rem; }
+  .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 1rem; }
+  .actions select {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.45rem 0.6rem;
+    border-radius: 6px;
+  }
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    .config { flex-direction: column; align-items: stretch; }
+    input { min-width: auto; }
+    table { font-size: 0.8rem; }
+    th, td { padding: 0.4rem 0.5rem; }
+  }
+</style>
+</head>
+<body>
+  <h1>LeadFlow Admin</h1>
+  <p class="sub">Tenants, leads, and status — across every WhatsApp bot you run.</p>
+
+  <div class="config">
+    <input id="apiBase" placeholder="Backend URL, e.g. https://yourdomain.com" value="">
+    <input id="adminKey" placeholder="Admin API key" type="password">
+    <button onclick="loadTenants()">Connect</button>
+  </div>
+
+  <script>
+  (function() {
+    const params = new URLSearchParams(window.location.search);
+    const backend = params.get('backend');
+    if (backend) {
+      document.getElementById('apiBase').value = backend;
+    }
+  })();
+  </script>
+
+  <div class="tabs">
+    <button id="tabTenants" class="active" onclick="showTab('tenants')">Tenants</button>
+    <button id="tabLeads" onclick="showTab('leads')">Leads (select a tenant)</button>
+    <button id="tabDetail" onclick="showTab('detail')" style="display:none;">Lead Detail</button>
+  </div>
+
+  <div id="tenantsView">
+    <div id="tenantsEmpty" class="empty" style="display:none;">
+      <strong>No tenants yet — onboard your first business.</strong>
+    </div>
+    <div class="table-wrap">
+      <table id="tenantsTable">
+        <thead>
+          <tr><th>Business</th><th>Niche</th><th>Status</th><th>Monthly Fee</th><th>Created</th><th></th></tr>
+        </thead>
+        <tbody id="tenantsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="leadsView" style="display:none;">
+    <div id="leadsEmpty" class="empty" style="display:none;">
+      <strong>No leads yet — share the WhatsApp number to start receiving messages.</strong>
+    </div>
+    <div class="table-wrap">
+      <table id="leadsTable">
+        <thead>
+          <tr><th>Phone</th><th>Intent</th><th>Status</th><th>Last message</th><th>Created</th></tr>
+        </thead>
+        <tbody id="leadsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="detailView" style="display:none;">
+    <button class="secondary" onclick="showTab('leads')">&larr; Back to leads</button>
+    <div id="leadDetail" class="detail"></div>
+  </div>
+
+  <div id="status"></div>
+
+<script>
+let currentTenantId = null;
+let currentLeadId = null;
+
+function apiBase() { return document.getElementById('apiBase').value.replace(/\/$/, ''); }
+function adminKey() { return document.getElementById('adminKey').value; }
+
+function showTab(tab) {
+  document.getElementById('tabTenants').classList.toggle('active', tab === 'tenants');
+  document.getElementById('tabLeads').classList.toggle('active', tab === 'leads');
+  document.getElementById('tabDetail').classList.toggle('active', tab === 'detail');
+  document.getElementById('tabDetail').style.display = tab === 'detail' ? 'inline-block' : 'none';
+  document.getElementById('tenantsView').style.display = tab === 'tenants' ? 'block' : 'none';
+  document.getElementById('leadsView').style.display = (tab === 'leads' || tab === 'detail') ? 'block' : 'none';
+  document.getElementById('detailView').style.display = tab === 'detail' ? 'block' : 'none';
+}
+
+async function loadTenants() {
+  const status = document.getElementById('status');
+  status.textContent = 'Loading tenants...';
+  try {
+    const res = await fetch(`${apiBase()}/tenants`, {
+      headers: { 'x-admin-key': adminKey() }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const tenants = await res.json();
+    const body = document.getElementById('tenantsBody');
+    const table = document.getElementById('tenantsTable');
+    const empty = document.getElementById('tenantsEmpty');
+    body.innerHTML = '';
+    if (tenants.length === 0) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+    } else {
+      table.style.display = 'table';
+      empty.style.display = 'none';
+      tenants.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${t.business_name}</td>
+          <td>${t.niche || ''}</td>
+          <td><span class="badge ${t.status}">${t.status}</span></td>
+          <td>R${t.monthly_fee}</td>
+          <td>${new Date(t.created_at).toLocaleDateString()}</td>
+          <td><button onclick="loadLeads('${t.id}')">View leads</button></td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+    status.textContent = `Loaded ${tenants.length} tenant(s).`;
+  } catch (e) {
+    status.textContent = `Error: ${e.message}. Check backend URL / admin key.`;
+  }
+}
+
+async function loadLeads(tenantId) {
+  currentTenantId = tenantId;
+  showTab('leads');
+  const status = document.getElementById('status');
+  status.textContent = 'Loading leads...';
+  try {
+    const res = await fetch(`${apiBase()}/tenants/${tenantId}/leads`, {
+      headers: { 'x-admin-key': adminKey() }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const leads = await res.json();
+    const body = document.getElementById('leadsBody');
+    const table = document.getElementById('leadsTable');
+    const empty = document.getElementById('leadsEmpty');
+    body.innerHTML = '';
+    if (leads.length === 0) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+    } else {
+      table.style.display = 'table';
+      empty.style.display = 'none';
+      leads.forEach(l => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${l.phone}</td>
+          <td>${l.intent || ''}</td>
+          <td><span class="badge ${l.status || 'new'}">${l.status || 'new'}</span></td>
+          <td>${(l.last_message || '').slice(0, 60)}</td>
+          <td>${new Date(l.created_at).toLocaleString()}</td>
+        `;
+        tr.style.cursor = 'pointer';
+        tr.onclick = () => loadLeadDetail(l.id);
+        body.appendChild(tr);
+      });
+    }
+    status.textContent = `Loaded ${leads.length} lead(s).`;
+  } catch (e) {
+    status.textContent = `Error: ${e.message}`;
+  }
+}
+
+async function loadLeadDetail(leadId) {
+  currentLeadId = leadId;
+  showTab('detail');
+  const status = document.getElementById('status');
+  status.textContent = 'Loading lead detail...';
+  try {
+    const res = await fetch(`${apiBase()}/tenants/${currentTenantId}/leads/${leadId}`, {
+      headers: { 'x-admin-key': adminKey() }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const container = document.getElementById('leadDetail');
+    const thread = data.messages || [];
+    const lead = data.lead || {};
+    let html = `<h2>${lead.phone || 'Lead'} — <span class="badge ${lead.status || 'new'}">${lead.status || 'new'}</span></h2>`;
+    html += `<div class="thread">`;
+    if (thread.length === 0) {
+      html += `<div style="color:var(--muted)">No messages yet.</div>`;
+    } else {
+      thread.forEach(m => {
+        const cls = m.direction === 'inbound' ? 'in' : 'out';
+        const label = m.direction === 'inbound' ? 'Customer' : 'Bot';
+        html += `<div class="msg ${cls}"><div class="msg-meta">${label} · ${new Date(m.created_at).toLocaleString()}</div>${escapeHtml(m.body || '')}</div>`;
+      });
+    }
+    html += `</div>`;
+    html += `<div class="actions">`;
+    html += `<label>Status: <select id="leadStatus" onchange="updateLeadStatus()">`;
+    ['new','contacted','quoted','booked','won','lost'].forEach(s => {
+      html += `<option value="${s}" ${lead.status === s ? 'selected' : ''}>${s}</option>`;
+    });
+    html += `</select></label>`;
+    html += `<button onclick="markStatus('quoted')">Mark quoted</button>`;
+    html += `<button onclick="markStatus('booked')">Mark booked</button>`;
+    html += `<button onclick="markStatus('won')">Mark won</button>`;
+    html += `<button onclick="markStatus('lost')">Mark lost</button>`;
+    html += `</div>`;
+    container.innerHTML = html;
+    status.textContent = `Lead ${leadId} loaded.`;
+  } catch (e) {
+    status.textContent = `Error: ${e.message}`;
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+async function updateLeadStatus() {
+  const status = document.getElementById('leadStatus').value;
+  await markStatus(status);
+}
+
+async function markStatus(status) {
+  try {
+    const res = await fetch(`${apiBase()}/tenants/${currentTenantId}/leads/${currentLeadId}/status`, {
+      method: 'POST',
+      headers: {
+        'x-admin-key': adminKey(),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    document.getElementById('status').textContent = `Status updated to ${status}.`;
+    loadLeadDetail(currentLeadId);
+  } catch (e) {
+    document.getElementById('status').textContent = `Error: ${e.message}`;
+  }
+}
+</script>
+</body>
+</html>

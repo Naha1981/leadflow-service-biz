@@ -5,6 +5,7 @@ import {
   timestamp,
   numeric,
   jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 // ---------------------------------------------------------
@@ -21,6 +22,8 @@ export const tenants = pgTable("tenants", {
   status: text("status").notNull().default("trial"), // trial | active | paused | churned | pending_connect
   plan: text("plan").notNull().default("starter"),
   monthlyFee: numeric("monthly_fee").notNull().default("700"),
+  // { "open": "08:00", "close": "17:00", "timezone": "Africa/Johannesburg" }
+  businessHours: jsonb("business_hours"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -38,6 +41,10 @@ export const leads = pgTable("leads", {
   status: text("status").notNull().default("new"), // new | contacted | quoted | booked | won | lost
   lastMessage: text("last_message"),
   reopenedAt: timestamp("reopened_at", { withTimezone: true }),
+  // Persistent opt-out flag — checked on every inbound message, not just
+  // the STOP message itself. This closes a gap the FastAPI version had
+  // (it only suppressed the reply to the STOP message, not future ones).
+  optedOut: boolean("opted_out").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -66,6 +73,33 @@ export const quotes = pgTable("quotes", {
   description: text("description"),
   pdfUrl: text("pdf_url"),
   status: text("status").notNull().default("draft"), // draft | sent | accepted | rejected
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------
+// REPLY_TEMPLATES — per-tenant overrides of the niche/global defaults
+// ---------------------------------------------------------
+export const replyTemplates = pgTable("reply_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  intent: text("intent").notNull(), // greeting | quote | booking | pricing | callback | other
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------
+// ORDERS — PayFast payment tracking
+// ---------------------------------------------------------
+export const orders = pgTable("orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  leadId: uuid("lead_id").references(() => leads.id, { onDelete: "set null" }),
+  amount: numeric("amount").notNull(),
+  description: text("description"),
+  businessName: text("business_name"),
+  status: text("status").notNull().default("pending"), // pending | paid | cancelled | failed
+  pfPaymentId: text("pf_payment_id"),
+  paymentData: jsonb("payment_data"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

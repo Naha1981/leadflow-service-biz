@@ -7,11 +7,15 @@
  * so callers never need to change.
  */
 
-const GREETINGS = ["hi", "hello", "hey", "start", "menu", "sawubona", "dumela"];
-const BOOK_WORDS = ["book", "booking", "appointment", "schedule"];
-const CALLBACK_WORDS = ["call me", "call back", "phone me", "ring me"];
-const PRICING_WORDS = ["prices", "pricing", "rates", "packages"];
+const GREETINGS = ["hi", "hello", "hey", "start", "menu", "sawubona", "dumela", "lumela", "thobela"];
+const BOOK_WORDS = ["book", "booking", "appointment", "schedule", "when can you", "reserve"];
+const CALLBACK_WORDS = ["call me", "call back", "phone me", "ring me", "call"];
+const PRICING_WORDS = ["prices", "pricing", "rates", "packages", "how much does it cost"];
 const QUOTE_WORDS = ["quote", "price", "how much", "cost", "estimate"];
+// "don't need a quote, just checking" should fall through to `other`,
+// not match `quote` on the word "quote" alone — ported from the FastAPI
+// fix for this exact false-positive.
+const NEGATION = ["don't", "do not", "no need", "not needed", "not interested", "just checking"];
 
 export type Intent = "greeting" | "booking" | "callback" | "pricing" | "quote" | "other";
 
@@ -19,6 +23,7 @@ export function classifyIntent(text: string): Intent {
   const t = (text ?? "").trim().toLowerCase();
 
   if (GREETINGS.some((g) => t === g || t.startsWith(g))) return "greeting";
+  if (NEGATION.some((n) => t.includes(n))) return "other";
   if (BOOK_WORDS.some((w) => t.includes(w))) return "booking";
   if (CALLBACK_WORDS.some((w) => t.includes(w))) return "callback";
   if (PRICING_WORDS.some((w) => t.includes(w))) return "pricing";
@@ -26,11 +31,10 @@ export function classifyIntent(text: string): Intent {
   return "other";
 }
 
-export const REPLIES: Record<Intent, string> = {
-  greeting: "Hi! Reply with one of these:\n1) Quote\n2) Book\n3) Prices\n4) Call back",
-  quote: "Great — send us: service needed, suburb, and preferred time. We'll quote you today.",
-  booking: "Let's get you booked. What day and time works best, and what's the job?",
-  pricing: "Our starting rates depend on the job — tell us what you need and we'll send exact pricing.",
-  callback: "Got it — we'll call you back shortly. What's the best time to reach you?",
-  other: "Thanks for your message! Reply MENU to see options.",
-};
+/**
+ * Still a real gap (same as the FastAPI version): greetings cover
+ * Sesotho/Zulu, but booking/pricing/quote keyword matching is English
+ * only. A Sesotho customer asking for a quote in Sesotho won't classify
+ * correctly. Flagged here rather than silently left unaddressed.
+ */
+

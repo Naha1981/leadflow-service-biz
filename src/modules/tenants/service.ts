@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenants } from "@/lib/db/schema";
 import { createInstance, setWebhook } from "@/lib/integrations/evolution/client";
@@ -76,4 +76,79 @@ export async function getTenantByInstanceName(instanceName: string) {
     .where(eq(tenants.evolutionInstanceName, instanceName))
     .limit(1);
   return tenant ?? null;
+}
+
+export async function updateBusinessHours(
+  tenantId: string,
+  hours: { open: string; close: string; timezone?: string },
+) {
+  const [updated] = await db
+    .update(tenants)
+    .set({ businessHours: hours })
+    .where(eq(tenants.id, tenantId))
+    .returning();
+  return updated ?? null;
+}
+
+// ---------------------------------------------------------
+// Reply templates — per-tenant overrides of niche/global defaults
+// ---------------------------------------------------------
+import { replyTemplates } from "@/lib/db/schema";
+import { GLOBAL_REPLIES, NICHE_REPLIES } from "@/modules/messages/replies";
+import type { Intent } from "@/modules/messages/intent";
+
+export async function listReplyTemplates(tenantId: string) {
+  return db.select().from(replyTemplates).where(eq(replyTemplates.tenantId, tenantId));
+}
+
+/**
+ * Returns a simple { intent: body } map for the webhook to use — this is
+ * the shape resolveReply() expects as its `customTemplates` argument.
+ */
+export async function getReplyTemplateMap(tenantId: string): Promise<Record<string, string>> {
+  const rows = await listReplyTemplates(tenantId);
+  const map: Record<string, string> = {};
+  for (const row of rows) map[row.intent] = row.body;
+  return map;
+}
+
+export async function upsertReplyTemplate(tenantId: string, intent: string, body: string) {
+  const existing = await db
+    .select()
+    .from(replyTemplates)
+    .where(and(eq(replyTemplates.tenantId, tenantId), eq(replyTemplates.intent, intent)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db.update(replyTemplates).set({ body }).where(eq(replyTemplates.id, existing[0].id));
+    return { action: "updated" as const };
+  }
+
+  await db.insert(replyTemplates).values({ tenantId, intent, body });
+  return { action: "created" as const };
+}
+
+/**
+ * Seeds a tenant's reply_templates with sensible defaults, blending
+ * niche-specific copy over the global fallback, so a new tenant doesn't
+ * start on generic replies. Still fully editable afterward via
+ * upsertReplyTemplate.
+ */
+export async function seedReplyTemplates(tenantId: string, nicheOverride?: string) {
+  const tenant = await getTenantById(tenantId);
+  const niche = (nicheOverride || tenant?.niche || "").toLowerCase();
+
+  const defaults: Record<string, string> = { ...GLOBAL_REPLIES };
+  const nicheDefaults = NICHE_REPLIES[niche];
+  if (nicheDefaults) {
+    for (const [intent, body] of Object.entries(nicheDefaults)) {
+      if (body) defaults[intent as Intent] = body;
+    }
+  }
+
+  for (const [intent, body] of Object.entries(defaults)) {
+    await upsertReplyTemplate(tenantId, intent, body);
+  }
+
+  return Object.keys(defaults);
 }
